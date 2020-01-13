@@ -1,6 +1,6 @@
 /*
 1：增加了内置malloc/free函数，用于分配和删除内存
-2：[ptr]@[u8|u16|u24|u32|bu16|bu24|bu32|int|float|double|char]|[idx] 语法用于直接内存访问，即访问指针ptr在idx位置上的值
+2：[ptr]@[u8|u16|u24|u32|bu16|bu24|bu32|int|float|double|char]|[idx] 语法用于直接内存访问，即访问指针ptr在idx位置上的值,idx是byte单位
    eg: var ptr=malloc(1024);ptr@u32=0x11223344;print(format("0x%x",ptr@u16[2]));free(ptr);
 
 */
@@ -6194,11 +6194,12 @@ SQString *SQStringTable::Add(const SQChar *news,SQInteger len)
 	SQHash newhash = ::_hashstr(news,len);
 	SQHash h = newhash&(_numofslots-1);
 	SQString *s;
+
 	for (s = _strings[h]; s; s = s->_next){
 		if(s->_len == len && (!memcmp(news,s->_val,sq_rsl(len))))
 			return s; //found
 	}
-
+	
 	SQString *t = (SQString *)SQ_MALLOC(sq_rsl(len)+sizeof(SQString));
 	new (t) SQString;
 	t->_sharedstate = _sharedstate;
@@ -7553,14 +7554,14 @@ exception_restore:
 						break;
 					case 4:
 						{
-							SQInteger target = (SQInteger)(*((unsigned int*) ((unsigned char*)(STK(arg1)._unVal.pUserPointer) + idx)));
-							TARGET = (((unsigned short)(target) & 0xff00) >> 8) | (((unsigned short)(target) & 0x00ff) << 8);
+							register unsigned char* ptr= ((unsigned char*) (STK(arg1)._unVal.pUserPointer)) + idx;
+							TARGET = (SQInteger)((*ptr)*0x100 + (*(ptr+1)));
 							break;
 						}
 					case 5:
 						{
-							SQInteger target = (SQInteger)(*((unsigned int*)((unsigned char*) (STK(arg1)._unVal.pUserPointer) + idx)));
-							TARGET = (SQInteger)( (((unsigned int)(target) & 0x00ff0000) >> 8) | (((unsigned int)(target) & 0x0000ff00) << 8) | (((unsigned int)(target) & 0x000000ff) << 24));
+							register unsigned char* ptr= ((unsigned char*) (STK(arg1)._unVal.pUserPointer)) + idx;
+							TARGET = (SQInteger)((*ptr)*0x10000 +  (*(ptr+1))*0x100 + (*(ptr+2)));
 							break;
 						}
 					case 6:
@@ -11802,6 +11803,36 @@ static SQInteger math_free(HSQUIRRELVM v)
 	sq_vm_free(ptr,0);
 	return 0;
 }
+static SQInteger math_memcpy(HSQUIRRELVM v)
+{
+	SQUserPointer des_ptr,src_ptr;
+    SQInteger n;
+	sq_getuserpointer(v,-3,&des_ptr);
+	sq_getuserpointer(v,-2,&src_ptr);
+    sq_getinteger(v,-1,&n);
+	if(des_ptr!=NULL && src_ptr!=NULL && n>0)
+	{
+		memcpy(des_ptr,src_ptr,n);
+	}
+    return 0;
+}
+static SQInteger math_memcmp(HSQUIRRELVM v)
+{
+	SQUserPointer des_ptr,src_ptr;
+    SQInteger n;
+	sq_getuserpointer(v,-3,&des_ptr);
+	sq_getuserpointer(v,-2,&src_ptr);
+    sq_getinteger(v,-1,&n);
+	if(des_ptr!=NULL && src_ptr!=NULL && n>0)
+	{
+		if(memcmp(des_ptr,src_ptr,n)==0)
+			sq_pushbool(v,SQTrue);
+		else
+			sq_pushbool(v,SQFalse);
+		return 1;
+	}
+    return 0;
+}
 //---------------------------
 
 SINGLE_ARG_FUNC(sqrt)
@@ -11842,6 +11873,8 @@ static const SQRegFunction mathlib_funcs[] = {
     _DECL_FUNC(abs,2,_SC(".n")),
 	_DECL_FUNC(malloc,2,_SC(".i")),
 	_DECL_FUNC(free,2,_SC(".p")),
+	_DECL_FUNC(memcpy,2,_SC(".pi")),
+	_DECL_FUNC(memcmp,2,_SC(".pi")),
     {NULL,(SQFUNCTION)0,0,NULL}
 };
 #undef _DECL_FUNC
